@@ -1,128 +1,81 @@
 import streamlit as st
+from PIL import Image, ImageFilter
+from io import BytesIO
 
 # --- 1. CONFIGURATION ---
-st.title('🌍 BMI Calculator with Unit Selection')
+st.title('🎨 Simple Streamlit Image Filter')
 st.markdown("---")
 
-# --- 2. UNIT SELECTION (Radio Button) ---
+# --- 2. IMAGE UPLOAD ---
 
-# Use the sidebar for the unit selection, as it's a primary control
-unit_system = st.sidebar.radio(
-    "Select Unit System",
-    ('Metric', 'Imperial (US)')
+uploaded_file = st.file_uploader(
+    "Choose an Image File",
+    type=['png', 'jpg', 'jpeg'], # Accepted file types
+    help="Upload a PNG, JPG, or JPEG image to apply filters."
+)
+
+# --- 3. FILTER SELECTION (Sidebar) ---
+
+st.sidebar.title("🛠️ Filters")
+filter_option = st.sidebar.selectbox(
+    "Select a Filter",
+    ('Original', 'Grayscale', 'Blur', 'Edge Enhance', 'Sharpen')
 )
 st.sidebar.markdown("---")
 
+# --- 4. IMAGE PROCESSING LOGIC ---
 
-# --- 3. INPUTS BASED ON SELECTION ---
-
-height_m = None
-weight_kg = None
-bmi = None
-
-st.subheader("Enter Your Measurements")
-
-if unit_system == 'Metric':
-    # METRIC INPUTS (KG and Meters)
-    weight_kg = st.number_input(
-        'Weight (in kilograms, kg)',
-        min_value=1.0,
-        max_value=500.0,
-        value=70.0,
-        step=0.1,
-        format="%.1f",
-    )
-    height_m = st.number_input(
-        'Height (in meters, m)',
-        min_value=0.5,
-        max_value=3.0,
-        value=1.70,
-        step=0.01,
-        format="%.2f",
-    )
-
-elif unit_system == 'Imperial (US)':
-    # IMPERIAL INPUTS (Lbs, Feet, and Inches)
-    weight_lb = st.number_input(
-        'Weight (in pounds, lb)',
-        min_value=1.0,
-        max_value=1000.0,
-        value=155.0,
-        step=0.1,
-        format="%.1f",
-    )
-
-    # Use columns to put Feet and Inches side-by-side
-    col_feet, col_inches = st.columns(2)
-    with col_feet:
-        height_ft = st.number_input(
-            'Height (in feet, ft)',
-            min_value=1,
-            max_value=8,
-            value=5,
-            step=1,
-        )
-    with col_inches:
-        height_in = st.number_input(
-            'Height (in inches, in)',
-            min_value=0,
-            max_value=11,
-            value=7,
-            step=1,
-        )
+if uploaded_file is not None:
+    # Use st.columns to display original and filtered images side-by-side
+    col1, col2 = st.columns(2)
     
-    # --- IMPERIAL TO METRIC CONVERSION ---
-    # Convert imperial inputs to metric for the calculation
-    
-    # 1. Total height in inches
-    total_inches = (height_ft * 12) + height_in
-    
-    # 2. Convert total inches to meters (1 inch = 0.0254 meters)
-    height_m = total_inches * 0.0254
-    
-    # 3. Convert weight from pounds to kilograms (1 lb = 0.453592 kg)
-    weight_kg = weight_lb * 0.453592
-
-
-# --- 4. CALCULATION & DISPLAY ---
-
-# Only run calculation if both inputs are available (which they will be)
-if height_m and weight_kg:
-    if height_m > 0:
-        # BMI formula: Weight (kg) / Height^2 (m^2)
-        bmi = weight_kg / (height_m ** 2)
-    else:
-        st.error("Height must be greater than zero.")
-        bmi = 0
-
-    if bmi > 0:
-        st.subheader("Your Results")
+    # 4a. Load the image from the uploaded file
+    # We use io.BytesIO because the uploaded file is in memory (bytes)
+    try:
+        image = Image.open(uploaded_file)
+    except Exception as e:
+        st.error(f"Error loading image: {e}")
+        st.stop()
         
-        # Display the calculated BMI value
-        st.metric(label="Calculated BMI", value=f"{bmi:,.2f}")
+    # 4b. Display Original Image
+    with col1:
+        st.subheader("Original Image")
+        st.image(image, caption="Uploaded Image", use_column_width=True)
 
-        # Determine the BMI category and set the display style
-        category = ""
-        if bmi < 18.5:
-            category = "Underweight"
-            st.warning(f"Category: **{category}**")
-        elif 18.5 <= bmi < 24.9:
-            category = "Normal weight"
-            st.success(f"Category: **{category}**")
-        elif 25.0 <= bmi < 29.9:
-            category = "Overweight"
-            st.warning(f"Category: **{category}**")
-        else:
-            category = "Obesity"
-            st.error(f"Category: **{category}**")
-            
-st.markdown("---")
+    # 4c. Apply Filter based on selection
+    filtered_image = image.copy()
+    
+    if filter_option == 'Grayscale':
+        filtered_image = image.convert('L')
+    
+    elif filter_option == 'Blur':
+        # Use a slider to allow user to control the blur strength
+        radius = st.sidebar.slider("Blur Radius", 0, 10, 2)
+        filtered_image = image.filter(ImageFilter.GaussianBlur(radius))
+        
+    elif filter_option == 'Edge Enhance':
+        filtered_image = image.filter(ImageFilter.EDGE_ENHANCE_MORE)
+        
+    elif filter_option == 'Sharpen':
+        filtered_image = image.filter(ImageFilter.SHARPEN)
 
-# Optional: Display the reference table for context
-st.caption("BMI Categories Reference:")
-st.table(
-    data={
-        "BMI Range (kg/m²)": ["< 18.5", "18.5 – 24.9", "25.0 – 29.9", "≥ 30.0"],
-        "Category": ["Underweight", "Normal weight", "Overweight", "Obesity"]
-    }
-)
+    # 4d. Display Filtered Image
+    with col2:
+        st.subheader(f"Filtered ({filter_option})")
+        st.image(filtered_image, caption="Filtered Image", use_column_width=True)
+        
+    # --- 5. DOWNLOAD BUTTON ---
+    
+    # Save the processed image to an in-memory byte buffer
+    buffer = BytesIO()
+    filtered_image.save(buffer, format="PNG")
+    
+    st.download_button(
+        label="Download Filtered Image",
+        data=buffer.getvalue(),
+        file_name=f"filtered_image_{filter_option.lower()}.png",
+        mime="image/png"
+    )
+
+else:
+    st.info("Please upload an image to begin filtering.")
